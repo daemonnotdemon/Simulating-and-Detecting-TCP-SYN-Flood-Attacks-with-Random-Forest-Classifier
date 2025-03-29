@@ -1,0 +1,88 @@
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    confusion_matrix, accuracy_score, precision_score, recall_score,
+    f1_score, classification_report
+)
+from sklearn.preprocessing import LabelEncoder
+import time
+import joblib  # Import joblib for saving and loading the model
+
+# Load the datasets
+train_data = pd.read_csv('train.csv', low_memory=False)
+test_data = pd.read_csv('demotesting.csv', low_memory=False)
+
+# Handle missing values
+train_data = train_data.fillna(train_data.mode().iloc[0])
+test_data = test_data.fillna(test_data.mode().iloc[0])
+
+# Filter TCP traffic
+train_data = train_data[train_data['protocol'] == 'TCP']
+test_data = test_data[test_data['protocol'] == 'TCP']
+
+# Combine data for encoding
+combined_data = pd.concat([train_data, test_data], axis=0)
+
+# Identify categorical columns
+categorical_columns = combined_data.select_dtypes(include=['object']).columns.tolist()
+
+# Apply label encoding
+label_encoders = {}
+for col in categorical_columns:
+    le = LabelEncoder()
+    combined_data[col] = le.fit_transform(combined_data[col].astype(str))
+    label_encoders[col] = le
+
+# Split data back
+train_data = combined_data.iloc[:len(train_data)]
+test_data = combined_data.iloc[len(train_data):]
+
+# Separate features and target variable
+X_train = train_data.drop('label', axis=1)
+y_train = train_data['label']
+X_test = test_data.drop('label', axis=1)
+y_test = test_data['label']
+
+# Check if model exists, load or train
+try:
+    rf_classifier = joblib.load('rf_model.joblib')
+    print("Model loaded from rf_model.joblib")
+except FileNotFoundError:
+    rf_classifier = RandomForestClassifier(n_estimators=10, random_state=42)
+    rf_classifier.fit(X_train, y_train)
+    joblib.dump(rf_classifier, 'rf_model.joblib')
+    print("Model trained and saved as rf_model.joblib")
+
+# Measure prediction time
+start_time = time.time()
+y_pred = rf_classifier.predict(X_test)
+end_time = time.time()
+print(f"\nTime taken to predict: {end_time - start_time:.4f} seconds")
+
+# Evaluate model
+conf_matrix = confusion_matrix(y_test, y_pred)
+TN, FP, FN, TP = conf_matrix.ravel()
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+specificity = TN / (TN + FP)
+f1 = f1_score(y_test, y_pred)
+fpr = FP / (FP + TN)
+fnr = FN / (FN + TP)
+class_report = classification_report(y_test, y_pred)
+
+# Print evaluation metrics
+print("\nConfusion Matrix:")
+print(conf_matrix)
+print(f"\nTrue Positives (TP): {TP}")
+print(f"False Positives (FP): {FP}")
+print(f"False Negatives (FN): {FN}")
+print(f"True Negatives (TN): {TN}")
+print(f"\nAccuracy: {accuracy:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall: {recall:.4f}")
+print(f"Specificity: {specificity:.4f}")
+print(f"F1 Score: {f1:.4f}")
+print(f"False Positive Rate (FPR): {fpr:.4f}")
+print(f"False Negative Rate (FNR): {fnr:.4f}")
+print("\nClassification Report:\n", class_report)
